@@ -19,7 +19,7 @@ from .agent_models import (
 from .llm import StructuredLLM
 from .models import AgentResponse, AgentRun, LabRequest, ToolObservation, TraceEvent
 from .prompts import initialize_messages
-from .tools import MUTATING_TOOLS, ToolEnvironment
+from .tools import ARGUMENT_MODELS, MUTATING_TOOLS, ToolEnvironment
 from .validation import validate_final_response, validate_proposed_tool_call
 
 
@@ -81,7 +81,20 @@ def run_agent(
 
         # TODO 2.4: Call validate_proposed_tool_call. If it returns errors,
         # create an action_gate_denied observation. Otherwise dispatch the tool.
-        errors = validate_proposed_tool_call(decision,request=request, trace=trace)
+        try:
+            ARGUMENT_MODELS[decision.tool].model_validate(decision.arguments)
+            errors = validate_proposed_tool_call(decision, request=request, trace=trace)
+        except (ValidationError, ValueError, TypeError) as exc:
+            errors= [f"invalid_tool_arguments: {exc}"]
+
+        if decision.tool in MUTATING_TOOLS and any(
+            event.mutating
+            and event.observation.ok
+            and event.decision.get("tool")== decision.tool
+            and event.decision.get("arguments")==decision.arguments
+            for event in trace
+        ):
+            errors.append("action_already_completed")
         if errors:
             observation =ToolObservation(
                 ok=False,
