@@ -1,37 +1,41 @@
-# Successful tensile tester reservation
+# Reservation flow
 
-This diagram follows `success_tensile` in `public_benchmark.json`.
+Example: `success_tensile` in `public_benchmark.json`.
+The trusted `LabRequest` identifies Alice (`authenticated_user_id: alice`),
+project `polymer-study`, resource `tensile-01`, start `2026-10-15T10:00:00`
+and end `2026-10-15T11:00:00`.
 
 ```mermaid
 flowchart TD
-    R["LabRequest from trusted application code<br/>authenticated_user_id: alice<br/>project_id: polymer-study<br/>resource_id: tensile-01<br/>start: 2026-10-15T10:00:00<br/>end: 2026-10-15T11:00:00"]
-    P["Initial messages<br/>System prompt + trusted request fields<br/>User text: reserve the tensile tester for this project and interval"]
-    M["ScriptedLLM returns one decision<br/>DecisionAdapter validates its type"]
-    K{"Decision kind?"}
-    G["Action gate before dispatch<br/>Validate arguments and bind request fields<br/>For reservation: check policy facts from the trace<br/>and reject a repeated successful action"]
-    T["Tool calls in this run, in order<br/>1. search_lab_documents<br/>2. get_user_authorizations: alice<br/>3. get_resource_status: tensile-01, 10:00-11:00<br/>4. reserve_resource: same user, project and interval"]
-    O["Successful ToolObservation after each call<br/>1. Policy passages, including TRN-210#tensile-tester<br/>2. Authorized project and lab_safety qualification<br/>3. Available, calibrated and no maintenance<br/>4. Confirmed reservation; simulator state updated"]
-    H["Append TraceEvent with decision and observation<br/>Mark only reserve_resource as mutating<br/>Append decision and observation to message history"]
-    F["Final-response check against the trace<br/>Citation was retrieved; reserve_resource succeeded<br/>Completed status includes that successful action"]
-    U["AgentRun returned<br/>status: completed<br/>completed_actions: reserve_resource<br/>citation: TRN-210#tensile-tester<br/>termination_reason: model_finished"]
+    A["LabRequest: Alice requests tensile-01<br/>polymer-study, October 15, 10:00-11:00"]
+    B["Model returns a typed decision"]
+    C["Action gate checks arguments,<br/>trusted request fields and policy facts"]
+    D["Run the allowed tool"]
+    E["Receive the tool observation"]
+    F["Save decision and observation in the trace<br/>and send them back to the model"]
+    G["Check final response against the trace"]
+    H["Return completed reservation"]
 
-    R --> P --> M --> K
-    K -->|tool_call: decisions 1-4| G
-    R -. trusted field values .-> G
-    H -. evidence from earlier calls .-> G
-    G -->|all required checks pass| T --> O --> H --> M
-    K -->|final: decision 5| F --> U
-    H -. four recorded tool events .-> F
+    A --> B
+    B -->|tool call| C
+    C -->|allowed| D --> E --> F --> B
+    B -->|final response| G --> H
+    F -. trace .-> G
 ```
 
-Each trip around the loop executes one tool, not the entire numbered list at once.
-Before the fourth call, the earlier observations establish policy retrieval,
-project authorization, the required qualification, availability, calibration and
-maintenance clearance. The requested 10:00-11:00 interval is daytime, so no
-after-hours approval is required. All ten supplied reservation-context facts pass.
+The tools run one at a time in this order:
 
-This scenario uses five model decisions and four tool calls, within the default
-10-step budget. Retrieved text is untrusted content; the application checks the
-recorded facts before dispatch and validates the final claims against the trace.
-The denial and clarification branches are omitted because neither occurs in this
-successful scenario.
+1. `search_lab_documents` returns the policy passages.
+2. `get_user_authorizations` confirms Alice's project access and `lab_safety` qualification.
+3. `get_resource_status` confirms availability, current calibration and no maintenance.
+4. `reserve_resource` creates the reservation and returns a successful observation.
+
+Before the reservation, the action gate checks the earlier observations. This
+interval is daytime, so after-hours approval is not required. Only the reservation
+tool changes simulator state; its trace event is marked as mutating.
+
+The final check confirms that `TRN-210#tensile-tester` was retrieved and that
+`reserve_resource` succeeded. The response has status `completed`, lists
+`reserve_resource` in `completed_actions`, and ends with `model_finished`.
+This run uses five model decisions and four tool calls. No denial or clarification
+occurs in this example.
