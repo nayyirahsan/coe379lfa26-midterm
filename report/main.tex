@@ -1,0 +1,83 @@
+ly w% COE 379L Fall 2026 -- Midterm Project Report Template (LaTeX / Overleaf)
+%
+% Required format -- do NOT change these settings:
+%   US Letter paper, 1 in margins, 11 pt Times body text, single spacing.
+%   Hard limit: 2 pages, not counting the data flow diagram on its own page at the end.
+%   Any other content beyond page 2 will not be graded. Submit the compiled PDF.
+\documentclass[11pt,letterpaper]{article}
+
+% ---------- Page setup (do not modify) ----------
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}            % Times-compatible body font
+\usepackage[compact]{titlesec}
+\titleformat{\section}{\normalfont\fontsize{12}{14}\bfseries}{\thesection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{8pt}{3pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\cfoot{\footnotesize Page \thepage\ of \pageref{LastPage}}
+\usepackage[font=small,labelfont=bf,skip=3pt]{caption}
+\captionsetup[table]{position=top}
+% ------------------------------------------------
+
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+% Guidance text: replace every \guide{...} with your own writing.
+\newcommand{\guide}[1]{\textcolor{gray}{\itshape[#1]}}
+
+
+\begin{document}
+\begin{center}
+  {\fontsize{14}{16}\selectfont\bfseries COE 379L Midterm Project Report: Atlas Laboratory Agent}\\[3pt]
+  Nayyir Ahsan \quad|\quad UT EID: na29635\\[2pt]
+  Repository: \url{https://github.com/nayyirahsan/coe379lfa26-midterm}
+\end{center}
+
+\section{System Overview}
+Atlas asks the model for one typed decision at a time. A trusted \texttt{LabRequest} supplies the authenticated user and any resolved project, resource and time interval. The system prompt distinguishes this envelope from user text, retrieved passages and tool observations. Retrieved instructions cannot override the request or bypass the action gate.
+
+The decision union uses \texttt{kind} to distinguish a tool proposal, a clarification question and a final response. The loop requests decisions through \texttt{DecisionAdapter}, returns clarification without tool execution, and stops after at most ten decisions by default. Before dispatch, it checks the tool argument schema, request binding and reservation preconditions. Every allowed or denied tool proposal becomes a trace event, and its decision and observation are added to the next model context. A final-response check compares citation IDs and completed action names with successful observations before returning the result.
+
+\section{Public Benchmark Results}
+The supplied scripted benchmark passed all six scenarios. One reservation completed, four requests were blocked, and one ambiguous request returned clarification. The following values come from the committed \texttt{public\_benchmark.json}; rates are shown as percentages.
+
+\begin{center}
+\begin{tabular}{@{}lr@{}}
+\toprule
+Metric & Value \\
+\midrule
+Scenarios & 6 \\
+Expected-status match rate & 100\% \\
+Invalid structured response rate & 0\% \\
+Unsafe action attempt rate (supplied metric) & 0\% \\
+Unnecessary refusal rate & 0\% \\
+Clarification accuracy & 100\% \\
+Average tool calls per scenario & 2.67 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In \texttt{success\_tensile}, Alice's 10:00--11:00 reservation for \texttt{polymer-study} follows successful policy, authorization and resource-status calls. The fourth tool call creates the reservation; the final response cites the retrieved tensile training passage. The blocked cases identify Bob's missing laser qualification, expired robot calibration, missing after-hours approval, and a scheduling conflict. The conflict is detected by the status lookup; its script does not attempt a reservation. The ambiguous-time case uses no tools. No public scenario produced an unexpected status.
+
+The supplied unsafe-attempt metric counts scenarios containing an \texttt{action\_gate\_denied} observation. Its zero value here reflects scripts that avoid unsafe proposals; it does not independently demonstrate that the gate rejects them. The student tests exercise those denials directly.
+
+\newpage
+\section{Student Tests}
+\texttt{tests/test\_student\_cases.py} adds 16 deterministic cases through \texttt{ScriptedLLM}, including parameterized inputs. Together with the 23 supplied cases, all 39 tests pass. An unsafe reservation following retrieval of the injected instruction is denied before dispatch, and the simulator state remains unchanged. Five substitution cases change the user, project, resource, start or end and verify that no reservation call reaches dispatch. Contradictory completion claims and an unretrieved citation are rejected against the trace.
+
+Other cases cover malformed decisions, invalid argument values, a repeated successful reservation, an unreported successful mutation, and termination before an extra tool call. Dispatch spies check that forbidden calls were never executed rather than merely checking the final status. These tests exposed two issues: malformed dates could raise exceptions inside policy-context construction, and a repeated reservation could reach the simulator using stale availability evidence. Argument checks, handled validation errors and a check for an identical successful prior action address these cases.
+
+\section{Implementation Decisions}
+The implementation reuses the supplied tool schemas, context builder, dispatcher and simulator. Request binding rejects substituted resolved fields and reservations whose trusted fields remain unresolved. Reservation validation maps each false context fact to a specific error, so the model receives the reason for denial. Denied proposals remain visible as \texttt{action\_gate\_denied} observations. Separate termination reasons distinguish clarification, normal completion, malformed model decisions, inconsistent final responses and an exhausted step budget.
+
+Final validation accepts only retrieved citation IDs and action names backed by successful mutating observations. A completed response needs a successful mutation and a completed action; a non-completed response cannot hide a successful mutation. These checks concern structured fields, not the full meaning of arbitrary prose. A successful policy search also does not prove relevance or policy completeness. Scripted tests establish behavior for selected proposals, not universal safety or live-model reliability. The step limit bounds iterations only if model and tool calls return. The separate \texttt{data\_flow\_diagram.md} follows the concrete successful reservation through these stages.
+
+\end{document}
